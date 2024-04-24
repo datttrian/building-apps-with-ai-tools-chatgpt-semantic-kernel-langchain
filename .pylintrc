@@ -1,6 +1,7 @@
 [MASTER]
 jobs=0
 suggestion-mode=yes
+extension-pkg-whitelist=pydantic
 
 # Enable the plugins
 load-plugins=pylint_pytest,
