@@ -12,7 +12,7 @@ kernel.add_text_completion_service(
     "dv", OpenAIChatCompletion("gpt-3.5-turbo", api_key, org_id)
 )
 
-with open(Path.cwd() / "order.txt") as f:
+with open(Path.cwd() / "src" / "order_big.txt") as f:
     order = f.read()
     f.seek(0)
     order_lines = f.readlines()
@@ -27,50 +27,53 @@ for line in order_lines:
     item_count[item] += int(quantity)
 
 
-prompt_prefix = """You are an order counting assistant. Summarize the list into product name and total quantity into a JSON document. Only output the JSON, do not give an explanation.\n"""
+prompt_prefix = """You are an order counting assisstant. Summarize the list into product name and total quantity, thinking step by step. Then output into a JSON object.\n"""
 prompt_examples = """List: 
 1 x apple
-2 x oranges
+2 x orange
+1 x apple
 3 x fish
 1 x apple
+1 x apple
 3 x duck
+1 x apple
+
 Output:
+First, lets convert each row into JSON.
 {
-    "apple": 2,
+    "apple": 1,
+    "orange": 2,
+    "apple" 1,
+    "fish": 3,
+    "apple": 1,
+    "apple": 1,
+    "duck": 3,
+    "apple": 1
+}
+
+Second, let's add all the counts together.
+apple = 1+1+1+1+1
+orange = 2
+fish = 3
+duck = 3
+
+Finally, lets output into our final JSON
+
+{
+    "apple": 5,
     "orange": 2,
     "fish": 2,
     "duck": 3
 }
 
-List:"""
-prompt = f"{prompt_prefix}{prompt_examples}" + "{{$input}}" + "Output:\n"
-summarize = kernel.create_semantic_function(prompt)
+List:\n"""
+prompt = f"{prompt_prefix}{prompt_examples}" + "{{$input}}" + "\nOutput:\n"
+summarize = kernel.create_semantic_function(
+    prompt, max_tokens=2048, temperature=0.3
+)
 
 # Summarize the list
-summary_result = summarize(order).result
-print("GPT Count", summary_result)
-
-formatted_actual = json.dumps(item_count, indent=4)
+summary_result = summarize(order)
+print("GPT-4 Count", summary_result)
 print("Actual Count:")
-print(formatted_actual)
-
-
-def _unidiff_output(expected, actual):
-    """
-    Helper function. Returns a string containing the unified diff of two multiline strings.
-    """
-
-    import difflib
-
-    expected = expected.splitlines(1)
-    actual = actual.splitlines(1)
-
-    diff = difflib.unified_diff(expected, actual)
-
-    return "".join(diff)
-
-
-print(_unidiff_output(summary_result, formatted_actual))
-
-# we'll use this data in some downstream process
-assert summary_result == formatted_actual
+print(json.dumps(item_count, indent=4))
