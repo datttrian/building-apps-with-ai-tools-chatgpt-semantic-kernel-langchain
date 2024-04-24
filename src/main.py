@@ -1,53 +1,96 @@
-import openai
-import numpy as np
 from langchain.chat_models import ChatOpenAI
+from langchain.prompts.chat import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+)
 from langchain.chains import LLMChain
-from langchain.schema import BaseOutputParser
 from langchain.evaluation import QAEvalChain
 
-question_answers = [
-    {"question": "When was tea discovered?", "answer": "3rd century"},
-    {
-        "question": "I'd like a 1 line ice cream slogan",
-        "answer": "It's the coolest thing around!",
-    },
-]
-llm = ChatOpenAI(model="gpt-3.5-turbo")
+
+def generate_book_recommendations(book_requests):
+    """
+    Generate book recommendations based on user requests
+    """
+    # create templates
+    system_template_book_agent = """You are book recommendation agent. Provide a short recommendation based on the user request."""
+    system_message_prompt = SystemMessagePromptTemplate.from_template(
+        system_template_book_agent
+    )
+
+    human_template_book_agent = "{text}"
+    human_message_prompt = HumanMessagePromptTemplate.from_template(
+        human_template_book_agent
+    )
+
+    # create full prompt
+    chat_prompt = ChatPromptTemplate.from_messages(
+        [system_message_prompt, human_message_prompt]
+    )
+
+    chain = LLMChain(llm=ChatOpenAI(temperature=1), prompt=chat_prompt)
+
+    recommendations = []
+    for book_request in book_requests:
+        recommendations.append(chain.run(book_request))
+
+    return recommendations
+
+
+def generate_book_requests(n=5) -> list[str]:
+    """Generate book requests
+    n: number of requests
+    """
+    # create templates
+    system_template_book_agent = """Generate one utterance for how someone may ask for a {text}. Include a genre and a year. """
+    system_message_prompt = SystemMessagePromptTemplate.from_template(
+        system_template_book_agent
+    )
+
+    # create full prompt
+    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt])
+
+    chain = LLMChain(llm=ChatOpenAI(model="gpt-3.5-turbo"), prompt=chat_prompt)
+
+    results = []
+
+    for _ in range(0, n):
+        results.append(chain.run("book"))
+
+    return results
+
+
+# generate some requests
+book_requests = generate_book_requests()
+print("The book requests are:\n")
+print("\n".join(book_requests))
+print("\n")
+# get the recommendations
+print("The book recommendations are:\n")
+recommendations = generate_book_recommendations(book_requests)
+print("\n\n".join(recommendations))
+print("\n")
+
+
+llm = ChatOpenAI(model="gpt-4")
 predictions = []
-responses = []
-for pairs in question_answers:
-    q = pairs["question"]
+question_answers = []
+
+for i in range(0, len(recommendations)):
+    q = book_requests[i]
+    a = recommendations[i]
+    question_answers.append({"question": q, "answer": a})
     response = llm.predict(
         f"Generate the response to the question: {q}. Only print the answer."
     )
-    responses.append(response)
     predictions.append({"result": {response}})
-
-print("\nGenerating text matchs:")
-
-for i in range(0, len(responses)):
-    print(question_answers[i]["answer"] == response[i])
-
-
-resp = openai.Embedding.create(
-    input=[r["answer"] for r in question_answers] + responses,
-    engine="text-embedding-ada-002",
-)
-
-print("\nGenerating Similarity Score:!")
-for i in range(0, len(question_answers) * 2, 2):
-    embedding_a = resp["data"][i]["embedding"]
-    embedding_b = resp["data"][len(question_answers)]["embedding"]
-    similarity_score = np.dot(embedding_a, embedding_b)
-    print(similarity_score, similarity_score > 0.8)
-
 
 print("\nGenerating Self eval:")
 
 # Start your eval chain
 eval_chain = QAEvalChain.from_llm(llm)
 
-# Have it grade itself. The code below helps the eval_chain know where the different parts are
+# compare the results of two prompts against themselves
 graded_outputs = eval_chain.evaluate(
     question_answers,
     predictions,
